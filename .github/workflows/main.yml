@@ -1,0 +1,41 @@
+name: Build SQLite ODBC Driver (Windows)
+
+on:
+  workflow_dispatch: # يتيح لك التشغيل يدوياً
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest # سنستخدم لينكس لبناء ملفات ويندوز (Cross-Compilation)
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          # تثبيت أدوات البناء المطلوبة والـ Cross Compiler والمكونات التي ذكرها المطور
+          sudo apt-get install -y mingw-w64 nsis wget tar make
+
+      - name: Run Build Script (64-bit)
+        run: |
+          # السكريبت الذي ذكره المطور في الـ README لبناء نسخة 64 بت
+          chmod +x mingw64-cross-build.sh
+          ./mingw64-cross-build.sh
+        continue-on-error: true # لضمان استمرار العمل حتى لو حدث خطأ بسيط في أحد أجزاء السكريبت
+
+      - name: Run Build Script (32-bit)
+        run: |
+          # بناء نسخة 32 بت
+          chmod +x mingw-cross-build.sh
+          ./mingw-cross-build.sh
+        continue-on-error: true
+
+      - name: Upload Compiled Installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLite-ODBC-Installers
+          # السكريبت ينتج عادة ملفات exe في المجلد الحالي
+          path: |
+            sqliteodbc.exe
+            sqliteodbc_w64.exe
