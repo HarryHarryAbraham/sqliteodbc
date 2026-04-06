@@ -14,37 +14,43 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 nsis wget tar make dos2unix curl
+          # تثبيت أدوات 32 بت و 64 بت بشكل كامل
+          sudo apt-get install -y mingw-w64 nsis wget tar make dos2unix curl binutils-mingw-w64-i686 gcc-mingw-w64-i686
 
-      - name: Manual Dependency & Path Fix
+      - name: Global Fixes & zlib Patch
         run: |
-          # 1. تحويل صيغة الملفات
-          dos2unix *.sh
+          # 1. تحويل صيغة ملفات السكريبت
+          find . -name "*.sh" -exec dos2unix {} +
           
-          # 2. حل مشكلة zlib (التي نجحت في النسخة 64)
+          # 2. حل مشكلة zlib (التي نجحت في الـ 64 بت)
           curl -L "https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz" -o temp_zlib.tar.gz
           tar -xzf temp_zlib.tar.gz
           mv zlib-1.3.1 zlib-1.2.8
           tar -czf zlib-1.2.8.tar.gz zlib-1.2.8
           rm -rf zlib-1.2.8 temp_zlib.tar.gz
           
-          # 3. تصحيح ملف 32 بت (إجباره على استخدام مترجم 32 بت الحقيقي)
-          # استبدال x86_64 بـ i686 واستبدال mingw64 بـ mingw32
-          sed -i 's/x86_64-w64-mingw32/i686-w64-mingw32/g' mingw-cross-build.sh
-          sed -i 's/mingw64/mingw32/g' mingw-cross-build.sh
-          
-          # 4. خدعة المسارات الوهمية (للتأكد من عمل النسختين)
+          # 3. تهيئة المسارات الوهمية للمطور (The Mirage Trick)
           sudo mkdir -p /opt/mingw64/bin /opt/mingw32/bin
           sudo ln -sf /usr/bin/x86_64-w64-mingw32-* /opt/mingw64/bin/
           sudo ln -sf /usr/bin/i686-w64-mingw32-* /opt/mingw32/bin/
           
           chmod +x *.sh
 
-      - name: Run Build Script (64-bit)
+      - name: Build 64-bit Version
         run: bash ./mingw64-cross-build.sh
 
-      - name: Run Build Script (32-bit)
-        run: bash ./mingw-cross-build.sh
+      - name: Hard Patch for 32-bit & Build
+        run: |
+          # إصلاح جذري لسكريبت 32 بت:
+          # استبدال أي إشارة للمترجم 64 بت بمترجم 32 بت الحقيقي لضمان وجود i386pe.x
+          sed -i 's/x86_64-w64-mingw32/i686-w64-mingw32/g' mingw-cross-build.sh
+          sed -i 's/mingw64/mingw32/g' mingw-cross-build.sh
+          
+          # إزالة خيار -m32 لأنه غير ضروري مع المترجم i686 ويتسبب أحياناً في أخطاء
+          sed -i 's/-m32//g' mingw-cross-build.sh
+          
+          # تشغيل البناء
+          bash ./mingw-cross-build.sh
 
       - name: Upload Compiled Installers
         if: always()
@@ -52,4 +58,4 @@ jobs:
         with:
           name: SQLite-ODBC-Installers
           path: |
-            *.exe
+             *.exe
