@@ -14,22 +14,21 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          # تثبيت أدوات 32 بت و 64 بت بشكل كامل
           sudo apt-get install -y mingw-w64 nsis wget tar make dos2unix curl binutils-mingw-w64-i686 gcc-mingw-w64-i686
 
       - name: Global Fixes & zlib Patch
         run: |
-          # 1. تحويل صيغة ملفات السكريبت
-          find . -name "*.sh" -exec dos2unix {} +
+          # 1. تحويل صيغة الملفات
+          find . -type f -name "*.sh" -exec dos2unix {} +
           
-          # 2. حل مشكلة zlib (التي نجحت في الـ 64 بت)
+          # 2. حل مشكلة zlib
           curl -L "https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz" -o temp_zlib.tar.gz
           tar -xzf temp_zlib.tar.gz
           mv zlib-1.3.1 zlib-1.2.8
           tar -czf zlib-1.2.8.tar.gz zlib-1.2.8
           rm -rf zlib-1.2.8 temp_zlib.tar.gz
           
-          # 3. تهيئة المسارات الوهمية للمطور (The Mirage Trick)
+          # 3. تجهيز مسارات وهمية للتوافق
           sudo mkdir -p /opt/mingw64/bin /opt/mingw32/bin
           sudo ln -sf /usr/bin/x86_64-w64-mingw32-* /opt/mingw64/bin/
           sudo ln -sf /usr/bin/i686-w64-mingw32-* /opt/mingw32/bin/
@@ -39,17 +38,23 @@ jobs:
       - name: Build 64-bit Version
         run: bash ./mingw64-cross-build.sh
 
-      - name: Hard Patch for 32-bit & Build
+      - name: Recursive Patch & Build 32-bit
         run: |
-          # إصلاح جذري لسكريبت 32 بت:
-          # استبدال أي إشارة للمترجم 64 بت بمترجم 32 بت الحقيقي لضمان وجود i386pe.x
-          sed -i 's/x86_64-w64-mingw32/i686-w64-mingw32/g' mingw-cross-build.sh
-          sed -i 's/mingw64/mingw32/g' mingw-cross-build.sh
+          # إصلاح شامل: استبدال مسارات المترجم في كافة ملفات المشروع (حتى الـ Makefiles الداخلية)
+          # هذا سيمنع الخطأ الظاهر في sqlite-2.8.17/main.mk
+          find . -type f -exec sed -i 's/x86_64-w64-mingw32/i686-w64-mingw32/g' {} +
+          find . -type f -exec sed -i 's/mingw64/mingw32/g' {} +
           
-          # إزالة خيار -m32 لأنه غير ضروري مع المترجم i686 ويتسبب أحياناً في أخطاء
-          sed -i 's/-m32//g' mingw-cross-build.sh
+          # إجبار النظام على استخدام أدوات 32 بت عبر متغيرات البيئة
+          export CC=i686-w64-mingw32-gcc
+          export CXX=i686-w64-mingw32-g++
+          export AR=i686-w64-mingw32-ar
+          export RANLIB=i686-w64-mingw32-ranlib
+          export LD=i686-w64-mingw32-ld
           
-          # تشغيل البناء
+          # حذف خيار -m32 الذي يسبب تعارضاً مع مترجم الـ i686 الأصلي
+          find . -type f -name "mingw-cross-build.sh" -exec sed -i 's/-m32//g' {} +
+          
           bash ./mingw-cross-build.sh
 
       - name: Upload Compiled Installers
