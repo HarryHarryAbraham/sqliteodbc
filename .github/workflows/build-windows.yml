@@ -18,17 +18,16 @@ jobs:
 
       - name: Global Fixes & zlib Patch
         run: |
-          # 1. تحويل صيغة الملفات
           find . -type f -name "*.sh" -exec dos2unix {} +
           
-          # 2. حل مشكلة zlib
+          # حل مشكلة zlib
           curl -L "https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz" -o temp_zlib.tar.gz
           tar -xzf temp_zlib.tar.gz
           mv zlib-1.3.1 zlib-1.2.8
           tar -czf zlib-1.2.8.tar.gz zlib-1.2.8
           rm -rf zlib-1.2.8 temp_zlib.tar.gz
           
-          # 3. تجهيز مسارات وهمية للتوافق
+          # تجهيز المسارات
           sudo mkdir -p /opt/mingw64/bin /opt/mingw32/bin
           sudo ln -sf /usr/bin/x86_64-w64-mingw32-* /opt/mingw64/bin/
           sudo ln -sf /usr/bin/i686-w64-mingw32-* /opt/mingw32/bin/
@@ -40,19 +39,23 @@ jobs:
 
       - name: Recursive Patch & Build 32-bit
         run: |
-          # إصلاح شامل: استبدال مسارات المترجم في كافة ملفات المشروع (حتى الـ Makefiles الداخلية)
-          # هذا سيمنع الخطأ الظاهر في sqlite-2.8.17/main.mk
+          # 1. استبدال المترجمات (التعديل السابق)
           find . -type f -exec sed -i 's/x86_64-w64-mingw32/i686-w64-mingw32/g' {} +
           find . -type f -exec sed -i 's/mingw64/mingw32/g' {} +
           
-          # إجبار النظام على استخدام أدوات 32 بت عبر متغيرات البيئة
+          # 2. الحل الجذري للخطأ الأخير: تغيير المعمارية من i386 إلى i686
+          # هذا سيسمح باستخدام __sync_fetch_and_add_4
+          find . -type f -exec sed -i 's/-march=i386/-march=i686/g' {} +
+          find . -type f -exec sed -i 's/-mtune=i386/-mtune=i686/g' {} +
+          
+          # 3. إعداد متغيرات البيئة
           export CC=i686-w64-mingw32-gcc
           export CXX=i686-w64-mingw32-g++
           export AR=i686-w64-mingw32-ar
           export RANLIB=i686-w64-mingw32-ranlib
           export LD=i686-w64-mingw32-ld
           
-          # حذف خيار -m32 الذي يسبب تعارضاً مع مترجم الـ i686 الأصلي
+          # إزالة -m32 لتجنب أي تعارض
           find . -type f -name "mingw-cross-build.sh" -exec sed -i 's/-m32//g' {} +
           
           bash ./mingw-cross-build.sh
